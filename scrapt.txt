@@ -1,0 +1,168 @@
+/*
+        //pwd
+        else if(strcmp(buf, "pwd") == 0){
+            char* newargv[] = {buf, NULL};
+                //fork a child and execute cd program
+            pid_t parent = getpid();
+            pid_t pid = fork();
+            //if parent, wait for child to terminate
+            if(pid > 0){
+                waitpid(pid, &status, 0);
+            }
+            //if child, execute cd prog
+            else {
+                if(execvp(newargv[0], newargv) == 1)
+                    perror("pwd: ");
+            }
+        }
+
+        //ls -> NEED TO EXPAND DIFF ARGS
+       /* else if(strcmp(buf, "ls") == 0){
+            char* newargv[] = {buf, NULL};
+            //fork a child and execute cd program
+            pid_t parent = getpid();
+            pid_t pid = fork();
+            //if parent, wait for child to terminate
+            if(pid > 0){
+                waitpid(pid, &status, 0);
+            }
+            //if child, execute cd prog
+            else {
+                if(execvp(newargv[0], newargv) == 1)
+                    perror("pwd: ");
+            }
+        }*/
+/*
+        //echo
+        else if(strcmp(buf, "echo") == 0){
+            char arg_string[256];
+            int i = strlen(buf) + 1;
+            int j = 0;
+
+            //Get rest of line after "echo" and put it in a arg_string
+            while(buffer[i] != '\0' && buffer[i] != '\n'){
+                arg_string[j] = buffer[i];
+                i++;
+                j++;
+            }
+
+            char* newargv[] = {buf, arg_string, NULL};
+            //fork a child and execute cd program
+            pid_t parent = getpid();
+            pid_t pid = fork();
+
+            //if parent, wait for child to terminate
+            if(pid > 0){
+                waitpid(pid, &status, 0);
+            }
+            //if child, execute cd prog
+            else {
+                if(execvp(newargv[0], newargv) == 1)
+                    perror("echo: ");
+            }
+            memset(arg_string, '\0', j);
+        }
+*/
+
+
+CD STUFF VVVVVV
+
+/*
+    //"cd .." -> go up a directory to parent directory
+    else if(strcmp(arguments[0], "..") == 0){
+            chdir(arguments[0]);
+    }
+
+    //"cd sub_dir"
+    else{
+        //Check to see if directory exists
+        DIR* dir = opendir(arguments[0]);
+        //Directory does exist
+        if (dir) {
+            chdir(arguments[0]); 
+            closedir(dir);
+        }
+        else if (ENOENT == errno) {
+            printf("cd: no such file or directory: %s\n", arguments[0]);
+        } 
+    }
+
+/*    //clear arguments
+    for(int j = 0; j < num_args; j++){
+        memset(arguments[j], '\0', 256);
+    }*/
+
+
+
+
+
+int extractArgs(char* line, char* arguments[], int start_index){
+    int i = start_index;
+    //index of arguments
+    int arg_num_ind = -1; //Set to -1 so first space will increment to 0
+    
+    //index of char in arguments[arg_num_ind]
+    int arg_char_ind = 0;
+
+    //Go through each character to determine number of arguments
+    //While loop ends when every character in line is examined
+    while(line[i] != '\0'){
+        //If character is a space
+        if(isspace(line[i])) { 
+            //If subsequent char is also space, simply advance
+            while(isspace(line[i+1]))
+                i++;
+            
+            //non whitespace character encountered, must be arg
+            arg_char_ind = 0;
+            arg_num_ind++;
+            i++;
+            continue;
+        }
+
+        arguments[arg_num_ind][arg_char_ind] = line[i];
+        i++;
+       arg_char_ind++;
+    }
+    return arg_num_ind;
+}
+
+
+
+
+int extractArgs(char* line, char* arguments[], int start_index){
+    int i = start_index;
+    //index of arguments
+    int arg_num_ind = -1; //Set to -1 so first space will increment to 0
+    
+    //index of char in arguments[arg_num_ind]
+    int arg_char_ind = 0;
+
+    //Go through each character to determine number of arguments
+    //While loop ends when every character in line is examined
+    while(line[i] != '\0'){
+        //If character is a space or a redirect, skip
+        if(isspace(line[i]) || line[i] == '>') { 
+            //If subsequent char is also space or redirect, simply advance
+            while(isspace(line[i+1]) || line[i+1] == '>')
+                i++;
+            
+            //non whitespace character encountered, must be arg
+            arg_char_ind = 0;
+            arg_num_ind++;
+            i++;
+            continue;
+        }
+
+        //skip redirect
+       // else if(line[i] == '>') {
+         //   i++;
+           // continue;
+        //};
+
+        arguments[arg_num_ind][arg_char_ind] = line[i];
+        i++;
+        arg_char_ind++;
+    }
+    return arg_num_ind;
+}
