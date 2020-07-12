@@ -61,7 +61,7 @@ int extractArgs(char* line, char* arguments[], int start_index){
 
         arguments[arg_num_ind][arg_char_ind] = line[i];
         i++;
-       arg_char_ind++;
+        arg_char_ind++;
     }
     return arg_num_ind;
 }
@@ -126,8 +126,19 @@ int main(int argc, char** argv){
         printf(": ");
         fflush(stdout);
         getline(&buffer, &bufsize, stdin);
-        sscanf(buffer, "%s", buf);
 
+        //buf takes the first word from buffer
+        //i.e buffer = 'cd somedir' -- buf = 'cd'
+        //also removes any extra whitespace 
+        sscanf(buffer, "%s", buf);
+        printf("buffer len: %d\n",strlen(buf));
+        fflush(stdout);
+
+        //Tests if #comment or blank line is added
+        if(buf[0] == '#' || strlen(buf) == 0){
+            printf("not doing antything\n");
+            continue;
+        }
         //cd
         if(strcmp(buf, "cd") == 0) {
            handleCd(buffer, args, strlen(buf));
@@ -158,27 +169,38 @@ int main(int argc, char** argv){
                 fflush(stdout);
             }
 
-            char* newargv[num_args + 2];// = {buf, NULL};
+            char* newargv[num_args + 2];
             newargv[0] = buf;
-            newargv[1] = "junk";
+            newargv[1] = NULL;
             newargv[num_args + 1] = NULL;
 
             //ASSIGN ARGS
-/*            int args_index = 0;
+            int args_index = 0;
+            int j = 1;
             for(int j = 1; j < num_args + 1; j++){
+                //If argument is a redirect for output, do not add any other
+                //arguments to the arguments being sent to exec
+                //EX: 'ls > file' should only have 'ls' passed to arg
+                if(strcmp(args[args_index], ">") == 0) {
+                    redirect_out = true;
+                    args_index++;
+                    break;
+                }
+                //printf("newargv[%d] = args[%d](%s)\n", j, args_index, args[args_index]);
                 newargv[j] = args[args_index];
                 args_index++;
-            
-*/
-/*
+            }
+
+          //PRINT ARGUMENTS THAT WILL BE PASSED TO EXEC
             for(int i = 0; i < num_args + 2; i++){
                 printf("newargv[%d] = %s\n", i, newargv[i]);
                 fflush(stdout);
             }
-*/
-            redirect_out = true;
+
+            //If redirect output, replace stddout with file descriptor of file name args[args_index]
+            //Note: args_index value will be the argument directly after first redirect
             if(redirect_out){
-                int fd = open("junk", O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+                int fd = open(args[args_index], O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
                 dup2(fd, 1);
                 close(fd);
             }

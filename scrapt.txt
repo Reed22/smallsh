@@ -166,3 +166,20 @@ int extractArgs(char* line, char* arguments[], int start_index){
     }
     return arg_num_ind;
 }
+
+
+ //If redirect input
+                else if(strcmp(args[args_index], "<") == 0) {
+                    printf("hit input red\n");
+                    redirect_in = true;
+                    strcpy(input_file, args[args_index + 1]);
+
+                    if(strcmp(args[args_index + 2], ">") == 0){
+                        printf("hit output red\n");
+                        redirect_out = true;
+                        strcpy(output_file, args[args_index + 3]);
+                    }
+                    
+                    args_index++;
+                    break;
+                }
