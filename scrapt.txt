@@ -168,18 +168,41 @@ int extractArgs(char* line, char* arguments[], int start_index){
 }
 
 
- //If redirect input
-                else if(strcmp(args[args_index], "<") == 0) {
-                    printf("hit input red\n");
-                    redirect_in = true;
-                    strcpy(input_file, args[args_index + 1]);
+          //PRINT ARGUMENTS THAT WILL BE PASSED TO EXEC
+/*            for(int i = 0; i < num_args + 2; i++){
+                printf("newargv[%d] = %s\n", i, newargv[i]);
+                fflush(stdout);
+            }*/
+/*            //If redirect in and redirect out
+            if(redirect_in && redirect_out){
+                printf("input file : %s\n", input_file);
+                printf("output file : %s\n", output_file);
 
-                    if(strcmp(args[args_index + 2], ">") == 0){
-                        printf("hit output red\n");
-                        redirect_out = true;
-                        strcpy(output_file, args[args_index + 3]);
-                    }
-                    
-                    args_index++;
-                    break;
-                }
+                //file descriptor for output file
+                int fd_out = open(output_file, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+                dup2(fd_out, 1);
+                close(fd_out);
+                
+                //file descriptor for input file
+                int fd_in = open(input_file, O_RDONLY);
+                dup2(fd_in, 0);
+                close(fd_in);
+            }
+
+            //If redirect output, replace stddout with file descriptor of file name args[args_index]
+            //Note: args_index value will be the argument directly after first redirect
+            else if(redirect_out){
+                printf("out file : %s\n", output_file);
+                int fd = open(output_file, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+                dup2(fd, 1);
+                close(fd);
+            }
+
+            //If redirect in only.
+            else if(redirect_in){
+                printf("input file : %s\n", input_file);
+                int fd = open(input_file, O_RDONLY);
+                dup2(fd, 0);
+                close(fd);
+            }
+ */ 

@@ -109,10 +109,11 @@ void handleCd(char* line, char* arguments[], int start_index){
 int main(int argc, char** argv){
     char* buffer;
     size_t bufsize = 2048;
-    //int i = 0;
     char buf[2048];
     char* args[NUM_ARGS];
     int status = 0;
+    char input_file[256];
+    char output_file[256];
     
     buffer = (char *) malloc(bufsize * sizeof(char));
 
@@ -131,12 +132,10 @@ int main(int argc, char** argv){
         //i.e buffer = 'cd somedir' -- buf = 'cd'
         //also removes any extra whitespace 
         sscanf(buffer, "%s", buf);
-        printf("buffer len: %d\n",strlen(buf));
         fflush(stdout);
 
         //Tests if #comment or blank line is added
         if(buf[0] == '#' || strlen(buf) == 0){
-            printf("not doing antything\n");
             continue;
         }
         //cd
@@ -160,14 +159,10 @@ int main(int argc, char** argv){
         else {
             int num_args = extractArgs(buffer, args, strlen(buf));
             bool redirect_out = false;
+            bool redirect_in = false;
             int index_redirect = -1;
             int saved_out = dup(1);
-           
-            printf("Number of arguments: %d\n", num_args);
-            for(int i = 0; i < num_args; i++){
-                printf("Original args[%d]: %s\n", i, args[i]);
-                fflush(stdout);
-            }
+            int saved_in = dup(0);
 
             char* newargv[num_args + 2];
             newargv[0] = buf;
@@ -179,32 +174,46 @@ int main(int argc, char** argv){
             int j = 1;
             for(int j = 1; j < num_args + 1; j++){
                 //If argument is a redirect for output, do not add any other
-                //arguments to the arguments being sent to exec
+                //arguments to the arguments being sent to exec(break)
                 //EX: 'ls > file' should only have 'ls' passed to arg
                 if(strcmp(args[args_index], ">") == 0) {
-                    redirect_out = true;
-                    args_index++;
+                    //redirect_out = true;
+                    strcpy(output_file,args[args_index + 1]);
+
+                    //file descriptor for output file
+                    int fd_out = open(output_file, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+                    dup2(fd_out, 1);
+                    close(fd_out);
+                    break;
+                } 
+
+                //if redirect input
+                else if(strcmp(args[args_index], "<") == 0) {
+                    //input file will be the next argument
+                    strcpy(input_file, args[args_index + 1]);
+
+                    //file descriptor for input file
+                    int fd_in = open(input_file, O_RDONLY);
+                    dup2(fd_in, 0);
+                    close(fd_in);
+
+                    //If also redirect out coupled with redirect in 
+                    if(strcmp(args[args_index + 2], ">") == 0){
+                        //output file will be argument after '>'
+                        strcpy(output_file, args[args_index + 3]);
+
+                        //file descriptor for output file
+                        int fd_out = open(output_file, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+                        dup2(fd_out, 1);
+                        close(fd_out);
+                    }
+                    
                     break;
                 }
-                //printf("newargv[%d] = args[%d](%s)\n", j, args_index, args[args_index]);
                 newargv[j] = args[args_index];
                 args_index++;
             }
-
-          //PRINT ARGUMENTS THAT WILL BE PASSED TO EXEC
-            for(int i = 0; i < num_args + 2; i++){
-                printf("newargv[%d] = %s\n", i, newargv[i]);
-                fflush(stdout);
-            }
-
-            //If redirect output, replace stddout with file descriptor of file name args[args_index]
-            //Note: args_index value will be the argument directly after first redirect
-            if(redirect_out){
-                int fd = open(args[args_index], O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-                dup2(fd, 1);
-                close(fd);
-            }
-           
+         
             //fork a child and execute cd program
             pid_t parent = getpid();
             pid_t pid = fork();
@@ -221,6 +230,10 @@ int main(int argc, char** argv){
             //Reset stdout
             dup2(saved_out, 1);
             close(saved_out);
+
+            //Reset stdin
+            dup2(saved_in, 0);
+            close(saved_in);
         }
     } while(strcmp(buf, "exit") != 0);
 }
