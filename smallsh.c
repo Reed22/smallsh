@@ -114,6 +114,8 @@ int main(int argc, char** argv){
     int status = 0;
     char input_file[256];
     char output_file[256];
+    int process_array[30];
+    int num_processes = 0;
     
     buffer = (char *) malloc(bufsize * sizeof(char));
 
@@ -124,6 +126,11 @@ int main(int argc, char** argv){
 
     //Continually run
     do {
+        //Reset buf var
+        //If user enters blank line, the last input will be in buf
+        //and then whatever that command is will be repeated.
+        memset(buf,'\0',strlen(buf));
+
         printf(": ");
         fflush(stdout);
         getline(&buffer, &bufsize, stdin);
@@ -133,13 +140,13 @@ int main(int argc, char** argv){
         //also removes any extra whitespace 
         sscanf(buffer, "%s", buf);
         fflush(stdout);
-
+        fflush(stdout);
         //Tests if #comment or blank line is added
         if(buf[0] == '#' || strlen(buf) == 0){
-            continue;
+            //continue;
         }
         //cd
-        if(strcmp(buf, "cd") == 0) {
+        else if(strcmp(buf, "cd") == 0) {
            handleCd(buffer, args, strlen(buf));
         }
 
@@ -155,19 +162,35 @@ int main(int argc, char** argv){
             }
         }
 
-        //This should work for most stuff, but not redirection...
+        //exit
+        else if(strcmp(buf, "exit") == 0){
+            printf("we are about to exit\n");
+            for(int i = 0; i < num_processes; i++){
+                int kill_sucess = kill(process_array[i], SIGTERM);
+                if(kill_sucess == 0){
+                    printf("kill of pid %d succesfull\n", process_array[i]);
+                    fflush(stdout);
+                }
+            }
+        }
+
+        //This should work for rest of the stuff
         else {
             int num_args = extractArgs(buffer, args, strlen(buf));
-            bool redirect_out = false;
-            bool redirect_in = false;
             int index_redirect = -1;
             int saved_out = dup(1);
+            bool error = false;
+            bool is_bg_process = false;
             int saved_in = dup(0);
 
             char* newargv[num_args + 2];
             newargv[0] = buf;
-            newargv[1] = NULL;
-            newargv[num_args + 1] = NULL;
+
+            //Setting each value after initial command to NULL
+            //I have been getting garbage values sometimes that
+            //has made my program behavior poorly.
+            for(int i = 1; i < num_args + 2; i ++)
+                newargv[i] = NULL;
 
             //ASSIGN ARGS
             int args_index = 0;
@@ -194,11 +217,19 @@ int main(int argc, char** argv){
 
                     //file descriptor for input file
                     int fd_in = open(input_file, O_RDONLY);
-                    dup2(fd_in, 0);
-                    close(fd_in);
+
+                    if(fd_in == -1){
+                        error = true;
+                        printf("cannot open %s for input\n", input_file);
+                        fflush(stdout);
+                    }
+                    else{
+                        dup2(fd_in, 0);
+                        close(fd_in);
+                    }
 
                     //If also redirect out coupled with redirect in 
-                    if(strcmp(args[args_index + 2], ">") == 0){
+                    if(strcmp(args[args_index + 2], ">") == 0 && !error){
                         //output file will be argument after '>'
                         strcpy(output_file, args[args_index + 3]);
 
@@ -209,31 +240,67 @@ int main(int argc, char** argv){
                     }
                     
                     break;
+                }                
+                //Check to see if last argument is '&'
+                //j == num_args <- if j is equal to num_args, then we are at the end of args
+                if(strcmp(args[args_index],"&") == 0 && j == num_args){
+                    is_bg_process = true;
+                    break;
                 }
                 newargv[j] = args[args_index];
                 args_index++;
             }
-         
-            //fork a child and execute cd program
-            pid_t parent = getpid();
-            pid_t pid = fork();
-            //if parent, wait for child to terminate
-            if(pid > 0){
-                waitpid(pid, &status, 0);
-            }
-            //if child, execute
-            else {
-                execvp(newargv[0], newargv); 
-            }
-            resetArgs(args, num_args);
 
-            //Reset stdout
-            dup2(saved_out, 1);
-            close(saved_out);
+            if(!error){
+                //fork a child and execute cd program
+                pid_t parent = getpid();
+                pid_t child_pid = fork();
+                //if parent, wait for child to terminate
+                if(child_pid > 0){
+                    if(is_bg_process){
+                        //do nothing? or
+                        //waitpid()
+                        //add child pid to thing
+                        process_array[num_processes] = child_pid;
+                        num_processes++;
+                        waitpid(child_pid, &status, WNOHANG);
+                    }
+                    else {
+                        waitpid(child_pid, &status, 0);
+                    }
+                }
+                //if child, execute
+                else {
+                    execvp(newargv[0], newargv); 
+                }
+                resetArgs(args, num_args);
 
-            //Reset stdin
-            dup2(saved_in, 0);
-            close(saved_in);
+                //Reset stdout
+                dup2(saved_out, 1);
+                close(saved_out);
+
+                //Reset stdin
+                dup2(saved_in, 0);
+                close(saved_in);
+            }
+        }
+
+        //Check for completed child processes.
+        for(int i = 0; i < num_processes; i++){
+            int this_pid = waitpid(process_array[i], &status, WNOHANG);
+            if(this_pid > 0){
+                kill(this_pid, SIGTERM);
+                printf("backgroud pid %d is done, exit value %d\n", this_pid, status);
+                fflush(stdout);
+
+                //Need to "delete" killed pid and decrement number of process
+                for(int j = i; i < num_processes - 1; i++){
+                    process_array[j] = process_array[j + 1];
+                }
+                num_processes--;
+            }
         }
     } while(strcmp(buf, "exit") != 0);
+    
+    return 0;
 }
