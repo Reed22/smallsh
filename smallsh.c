@@ -141,9 +141,10 @@ int main(int argc, char** argv){
         sscanf(buffer, "%s", buf);
         fflush(stdout);
         fflush(stdout);
+
         //Tests if #comment or blank line is added
         if(buf[0] == '#' || strlen(buf) == 0){
-            //continue;
+            //Don't do anything
         }
         //cd
         else if(strcmp(buf, "cd") == 0) {
@@ -164,13 +165,8 @@ int main(int argc, char** argv){
 
         //exit
         else if(strcmp(buf, "exit") == 0){
-            printf("we are about to exit\n");
             for(int i = 0; i < num_processes; i++){
-                int kill_sucess = kill(process_array[i], SIGTERM);
-                if(kill_sucess == 0){
-                    printf("kill of pid %d succesfull\n", process_array[i]);
-                    fflush(stdout);
-                }
+                kill(process_array[i], SIGTERM);
             }
         }
 
@@ -179,9 +175,9 @@ int main(int argc, char** argv){
             int num_args = extractArgs(buffer, args, strlen(buf));
             int index_redirect = -1;
             int saved_out = dup(1);
+            int saved_in = dup(0);
             bool error = false;
             bool is_bg_process = false;
-            int saved_in = dup(0);
 
             char* newargv[num_args + 2];
             newargv[0] = buf;
@@ -245,6 +241,8 @@ int main(int argc, char** argv){
                 //j == num_args <- if j is equal to num_args, then we are at the end of args
                 if(strcmp(args[args_index],"&") == 0 && j == num_args){
                     is_bg_process = true;
+                    int fd_dev_null = open("/dev/null", O_WRONLY, S_IRUSR | S_IWUSR);
+                    dup2(fd_dev_null, 1);
                     break;
                 }
                 newargv[j] = args[args_index];
@@ -255,23 +253,37 @@ int main(int argc, char** argv){
                 //fork a child and execute cd program
                 pid_t parent = getpid();
                 pid_t child_pid = fork();
-                //if parent, wait for child to terminate
+                //if parent
                 if(child_pid > 0){
+                    //If background process, do not wait
                     if(is_bg_process){
-                        //do nothing? or
-                        //waitpid()
-                        //add child pid to thing
+                        //add child pid to array to keep track of later
                         process_array[num_processes] = child_pid;
                         num_processes++;
                         waitpid(child_pid, &status, WNOHANG);
+
+                        //Reset stdout early so that pid can be outputted to terminal
+                        dup2(saved_out, 1);
+                        close(saved_out);
+                        
+                        printf("background pid is %d\n", child_pid); 
+                        fflush(stdout);
                     }
+                    //wait on child if not a background process
                     else {
                         waitpid(child_pid, &status, 0);
                     }
                 }
                 //if child, execute
                 else {
-                    execvp(newargv[0], newargv); 
+                    execvp(newargv[0], newargv);
+                    //If error: print out the command and the error
+                    //The lines below will not be executed if execvp() doesn't fail
+                    printf("%s: ", buf);
+                    fflush(stdout);
+                    perror("");
+                    fflush(stdout);
+                    exit(EXIT_FAILURE);
                 }
                 resetArgs(args, num_args);
 
