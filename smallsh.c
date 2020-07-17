@@ -11,10 +11,43 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <signal.h>
 
 #define MAX_INPUT_LEN 2048
 #define NUM_ARGS 512
 
+bool in_fg_only_mode = false;
+/**********************************************************
+*
+*        void handle_SIGTSTP(int signo)
+*
+* This handles the Cntrl - Z signal
+***********************************************************/
+//NEEDS TO WAIT FOR BG PROCESSES
+void handle_SIGTSTP(int signo){
+    if(!in_fg_only_mode){
+        char* message = "Entering foreground-only mode (& is now ignored)\n";
+        write(1, message, 49);
+        fflush(stdout);
+        in_fg_only_mode = true;
+    }
+    else if(in_fg_only_mode){
+        char* message = "Exiting foreground-only mode\n";
+        write(1, message, 29);
+        in_fg_only_mode = false;
+    }
+}
+
+/**********************************************************
+*
+*        void handle_SIGINT(int signo)
+*
+* This handles the Cntrl - C signal
+***********************************************************/
+void handle_SIGINT(int signo){
+    char* message = "You hit Cntrl-C\n";
+    write(STDOUT_FILENO, message, 16);
+}
 /**********************************************************
 *
 *        void resetArgs(char* arguments[])
@@ -123,7 +156,17 @@ int main(int argc, char** argv){
     for(int j = 0; j < NUM_ARGS; j++){
         args[j] = (char *) malloc(256 * sizeof(char));
     }
+    struct sigaction SIGTSTP_action = {NULL};
+    SIGTSTP_action.sa_handler = handle_SIGTSTP;
+    sigfillset(&SIGTSTP_action.sa_mask);
+    SIGTSTP_action.sa_flags = SA_RESTART;
+    sigaction(SIGTSTP, &SIGTSTP_action, NULL);
 
+    struct sigaction SIGINT_action = {NULL};
+    SIGINT_action.sa_handler = handle_SIGINT;
+    sigfillset(&SIGINT_action.sa_mask);
+    SIGINT_action.sa_flags = SA_RESTART;
+    sigaction(SIGINT, &SIGINT_action, NULL);
     //Continually run
     do {
         //Reset buf var
@@ -240,10 +283,12 @@ int main(int argc, char** argv){
                 //Check to see if last argument is '&'
                 //j == num_args <- if j is equal to num_args, then we are at the end of args
                 if(strcmp(args[args_index],"&") == 0 && j == num_args){
-                    is_bg_process = true;
-                    int fd_dev_null = open("/dev/null", O_WRONLY, S_IRUSR | S_IWUSR);
-                    dup2(fd_dev_null, 1);
-                    break;
+                    if(in_fg_only_mode == false){
+                        is_bg_process = true;
+                        int fd_dev_null = open("/dev/null", O_WRONLY, S_IRUSR | S_IWUSR);
+                        dup2(fd_dev_null, 1);
+                        break;
+                    }
                 }
                 
                 //replace $$ with shell pid
@@ -255,7 +300,7 @@ int main(int argc, char** argv){
                     newargv[j] = shell_pid_str;
                     args_index++;
                 }
-                
+
                 else{
                     newargv[j] = args[args_index];
                     args_index++;
@@ -314,10 +359,15 @@ int main(int argc, char** argv){
         for(int i = 0; i < num_processes; i++){
             int this_pid = waitpid(process_array[i], &status, WNOHANG);
             if(this_pid > 0){
-                kill(this_pid, SIGTERM);
-                printf("backgroud pid %d is done, exit value %d\n", this_pid, status);
-                fflush(stdout);
-
+                kill(this_pid, SIGTERM);                
+                if(WIFEXITED(status)){
+                    printf("backgroud pid %d is done: exit value %d\n", this_pid, status);
+                    fflush(stdout);
+                }
+                else{
+                    printf("backgroud pid %d is done: terminated by signal %d\n", this_pid, status);
+                    fflush(stdout);
+                }
                 //Need to "delete" killed pid and decrement number of process
                 for(int j = i; i < num_processes - 1; i++){
                     process_array[j] = process_array[j + 1];
