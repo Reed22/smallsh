@@ -245,8 +245,21 @@ int main(int argc, char** argv){
                     dup2(fd_dev_null, 1);
                     break;
                 }
-                newargv[j] = args[args_index];
-                args_index++;
+                
+                //replace $$ with shell pid
+                else if(strcmp(args[args_index], "$$") == 0){
+                    int shell_pid_int = getpid();
+                    char shell_pid_str[20];
+                    //copy int to a char[] using sprintf, then store it in newargv[]
+                    sprintf(shell_pid_str, "%d", shell_pid_int);
+                    newargv[j] = shell_pid_str;
+                    args_index++;
+                }
+                
+                else{
+                    newargv[j] = args[args_index];
+                    args_index++;
+                }
             }
 
             if(!error){
