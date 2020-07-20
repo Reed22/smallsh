@@ -16,24 +16,36 @@
 #define MAX_INPUT_LEN 2048
 #define NUM_ARGS 512
 
-bool in_fg_only_mode = false;
+//Global variables
+//Need for signal handlers
+bool in_fg_only_mode = false; //Allows main program to know if we are in foreground only mode
+//bool fg_running = false;
+int status = 0; //status variable that will be used for status command.
 /**********************************************************
 *
 *        void handle_SIGTSTP(int signo)
 *
-* This handles the Cntrl - Z signal
+* This handles the Cntrl - Z signal, which will set shell
+* to foreground only mode or exit foreground only mode.
 ***********************************************************/
-//NEEDS TO WAIT FOR BG PROCESSES
+//NEEDS TO WAIT FOR BG PROCESSES <--------------
 void handle_SIGTSTP(int signo){
+
+    //If we are not in fg only mode, enter fg only mode
+    //Note: Encountering a bug that results in the next prompt (:) not being
+    //printed after SIGTSTP. Added a prompt to the end of each message 
+    //to fix this. 
     if(!in_fg_only_mode){
-        char* message = "Entering foreground-only mode (& is now ignored)\n";
-        write(1, message, 49);
+        char* message = "\nEntering foreground-only mode (& is now ignored)\n: ";
+        write(1, message, 53);
         fflush(stdout);
         in_fg_only_mode = true;
     }
+    //Exit fg only mode if we are in it
     else if(in_fg_only_mode){
-        char* message = "Exiting foreground-only mode\n";
-        write(1, message, 29);
+        char* message = "\nExiting foreground-only mode\n: ";
+        write(1, message, 33);
+        fflush(stdout);
         in_fg_only_mode = false;
     }
 }
@@ -42,11 +54,23 @@ void handle_SIGTSTP(int signo){
 *
 *        void handle_SIGINT(int signo)
 *
-* This handles the Cntrl - C signal
+* This handles the Cntrl - C signal. Will not terminate shell, 
+* but will terminate any foreground processes
 ***********************************************************/
 void handle_SIGINT(int signo){
-    char* message = "You hit Cntrl-C\n";
-    write(STDOUT_FILENO, message, 16);
+    //Doing nothing seems to work....
+    //But it also kills BG process, which is a no-no
+    if(!WEXITSTATUS(status)){
+        char* message = "terminated by signal\n: ";
+        write(1, message, 23);
+        fflush(stdout);
+    /*    char sig[20]; 
+        sprintf(sig, "%d\n", status);
+        char* sig_msg = sig;
+        write(1, sig_msg, 20);
+        fflush(stdout);*/
+    }
+
 }
 /**********************************************************
 *
@@ -69,6 +93,8 @@ void resetArgs(char* arguments[], int number_of_args){
 * characters.
 ***********************************************************/
 int extractArgs(char* line, char* arguments[], int start_index){
+    //Starting index for extracting arguments
+    //start index will be index after the command
     int i = start_index;
     //index of arguments
     int arg_num_ind = -1; //Set to -1 so first space will increment to 0
@@ -140,15 +166,16 @@ void handleCd(char* line, char* arguments[], int start_index){
 *
 ***********************************************************/
 int main(int argc, char** argv){
-    char* buffer;
-    size_t bufsize = 2048;
-    char buf[2048];
-    char* args[NUM_ARGS];
-    int status = 0;
-    char input_file[256];
-    char output_file[256];
-    int process_array[30];
-    int num_processes = 0;
+    char* buffer;  //Used for getline to store user input
+    size_t bufsize = 2048; //Size for allocating buffer
+    char buf[2048]; //buf will hold the command (first word) of user input using sscanf()
+    char* args[NUM_ARGS]; //Arguments array, will be used to place arguments from user input
+    //int status = 0; 
+    char input_file[256]; //File name for input redirection
+    char output_file[256]; //File name for output redirection
+    int process_array[30]; //Array that will hold PID of processes that have not been completed
+    int num_processes = 0; //Number of processes in process array
+
     
     buffer = (char *) malloc(bufsize * sizeof(char));
 
@@ -156,18 +183,22 @@ int main(int argc, char** argv){
     for(int j = 0; j < NUM_ARGS; j++){
         args[j] = (char *) malloc(256 * sizeof(char));
     }
+
+    //Setting up SIGTSTP signal handler
     struct sigaction SIGTSTP_action = {NULL};
     SIGTSTP_action.sa_handler = handle_SIGTSTP;
     sigfillset(&SIGTSTP_action.sa_mask);
     SIGTSTP_action.sa_flags = SA_RESTART;
     sigaction(SIGTSTP, &SIGTSTP_action, NULL);
 
+    //Setting up SIGINT signal handler
     struct sigaction SIGINT_action = {NULL};
     SIGINT_action.sa_handler = handle_SIGINT;
     sigfillset(&SIGINT_action.sa_mask);
     SIGINT_action.sa_flags = SA_RESTART;
     sigaction(SIGINT, &SIGINT_action, NULL);
-    //Continually run
+
+    //Continually run unit user enters "exit"
     do {
         //Reset buf var
         //If user enters blank line, the last input will be in buf
@@ -195,6 +226,7 @@ int main(int argc, char** argv){
         }
 
         //status
+        //prints exit code or termination signal
         else if(strcmp(buf, "status") == 0){
             if(WIFEXITED(status)){
                 printf("exit value %d\n", WEXITSTATUS(status));
@@ -207,22 +239,23 @@ int main(int argc, char** argv){
         }
 
         //exit
+        //kills all remaining processes that are still running
         else if(strcmp(buf, "exit") == 0){
             for(int i = 0; i < num_processes; i++){
                 kill(process_array[i], SIGTERM);
             }
         }
 
-        //This should work for rest of the stuff
+        //This works for every other command using fork() and execvp()
         else {
-            int num_args = extractArgs(buffer, args, strlen(buf));
-            int index_redirect = -1;
-            int saved_out = dup(1);
-            int saved_in = dup(0);
-            bool error = false;
-            bool is_bg_process = false;
+            int num_args = extractArgs(buffer, args, strlen(buf)); //Extract arguments and get number of args
+            //int index_redirect = -1;
+            int saved_out = dup(1); //Used to replace output to stdout for redirection
+            int saved_in = dup(0); //Used to replace input to stdin for redirection
+            bool error = false; //error flag
+            bool is_bg_process = false; //Used for parent shell to know whether to wait for child process or not
 
-            char* newargv[num_args + 2];
+            char* newargv[num_args + 2]; //Arguments that will be passed to execvp()
             newargv[0] = buf;
 
             //Setting each value after initial command to NULL
@@ -231,7 +264,7 @@ int main(int argc, char** argv){
             for(int i = 1; i < num_args + 2; i ++)
                 newargv[i] = NULL;
 
-            //ASSIGN ARGS
+            //Assign arguments from args[] to newargv[]
             int args_index = 0;
             int j = 1;
             for(int j = 1; j < num_args + 1; j++){
@@ -257,11 +290,13 @@ int main(int argc, char** argv){
                     //file descriptor for input file
                     int fd_in = open(input_file, O_RDONLY);
 
+                    //If error opening file, print error and set error flag
                     if(fd_in == -1){
                         error = true;
                         printf("cannot open %s for input\n", input_file);
                         fflush(stdout);
                     }
+                    //else, redirect input to input file
                     else{
                         dup2(fd_in, 0);
                         close(fd_in);
@@ -301,6 +336,7 @@ int main(int argc, char** argv){
                     args_index++;
                 }
 
+                //If normal argument, simply copy
                 else{
                     newargv[j] = args[args_index];
                     args_index++;
@@ -329,7 +365,10 @@ int main(int argc, char** argv){
                     }
                     //wait on child if not a background process
                     else {
+                        //See if this works....used for signal handler
+                        //fg_running = true;
                         waitpid(child_pid, &status, 0);
+                        //fg_running = false;
                     }
                 }
                 //if child, execute
@@ -358,6 +397,7 @@ int main(int argc, char** argv){
         //Check for completed child processes.
         for(int i = 0; i < num_processes; i++){
             int this_pid = waitpid(process_array[i], &status, WNOHANG);
+            //If waitpid returns pid, kill that processes
             if(this_pid > 0){
                 kill(this_pid, SIGTERM);                
                 if(WIFEXITED(status)){
