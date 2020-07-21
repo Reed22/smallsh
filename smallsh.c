@@ -19,8 +19,8 @@
 //Global variables
 //Need for signal handlers
 bool in_fg_only_mode = false; //Allows main program to know if we are in foreground only mode
-//bool fg_running = false;
 int status = 0; //status variable that will be used for status command.
+
 /**********************************************************
 *
 *        void handle_SIGTSTP(int signo)
@@ -61,14 +61,14 @@ void handle_SIGINT(int signo){
     //Doing nothing seems to work....
     //But it also kills BG process, which is a no-no
     if(!WEXITSTATUS(status)){
-        char* message = "terminated by signal\n: ";
-        write(1, message, 23);
+        char* message = "terminated by signal ";
+        write(1, message, 21);
         fflush(stdout);
-    /*    char sig[20]; 
+        char sig[20]; 
         sprintf(sig, "%d\n", status);
         char* sig_msg = sig;
-        write(1, sig_msg, 20);
-        fflush(stdout);*/
+        write(1, sig_msg, 3);
+        fflush(stdout);
     }
 
 }
@@ -329,7 +329,7 @@ int main(int argc, char** argv){
                 //replace $$ with shell pid
                 else if(strcmp(args[args_index], "$$") == 0){
                     int shell_pid_int = getpid();
-                    char shell_pid_str[20];
+                    char shell_pid_str[20]; //Used to trun shell_pid into a string for output
                     //copy int to a char[] using sprintf, then store it in newargv[]
                     sprintf(shell_pid_str, "%d", shell_pid_int);
                     newargv[j] = shell_pid_str;
