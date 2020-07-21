@@ -91,6 +91,11 @@ void resetArgs(char* arguments[], int number_of_args){
 * This takes the input line from the shell and grabs all
 * arguments. An argument is a series of nonwhite space
 * characters.
+*
+* Does this by extracting each character as it moves down
+* input line. If it comes across whitespace, it ignores it
+* all subsequent whitespaces. Also extracts pid when it 
+* comes across '$$'
 ***********************************************************/
 int extractArgs(char* line, char* arguments[], int start_index){
     //Starting index for extracting arguments
@@ -99,7 +104,8 @@ int extractArgs(char* line, char* arguments[], int start_index){
     //index of arguments
     int arg_num_ind = -1; //Set to -1 so first space will increment to 0
     
-    //index of char in arguments[arg_num_ind]
+    //index of char in arguments[arg_num_ind], increments each time a character is found
+    //and placed into arguments[], resets to 0 once whitespace is found.
     int arg_char_ind = 0;
 
     //Go through each character to determine number of arguments
@@ -118,9 +124,31 @@ int extractArgs(char* line, char* arguments[], int start_index){
             continue;
         }
 
-        arguments[arg_num_ind][arg_char_ind] = line[i];
-        i++;
-        arg_char_ind++;
+        //If '$$' is found in argument, expand to shell pid
+        if(line[i] == '$' && line[i+1] == '$'){
+            int shell_pid_int = getpid();
+            char shell_pid_str[20]; //Used to turn shell_pid into a string for output
+            for(int j = 0; j < 20; j++){
+                shell_pid_str[j] = '\0';
+            }
+            //copy int to a char[] using sprintf
+            sprintf(shell_pid_str, "%d", shell_pid_int);
+
+            int pid_str_index = 0; //Used to go down shell_pid_str[] to extract characters
+            //Copy until null character found
+            while(shell_pid_str[pid_str_index] != '\0'){
+                arguments[arg_num_ind][arg_char_ind] = shell_pid_str[pid_str_index];
+                arg_char_ind++;
+                pid_str_index++;
+            }
+            //Since i and i+1 have both been examined, increment i by two to get to next character
+            i += 2;
+        }
+        else {
+            arguments[arg_num_ind][arg_char_ind] = line[i];
+            i++;
+            arg_char_ind++;
+        }
     }
     return arg_num_ind;
 }
@@ -140,6 +168,7 @@ int extractArgs(char* line, char* arguments[], int start_index){
 void handleCd(char* line, char* arguments[], int start_index){
     //Get arguments from input line
     int num_args = extractArgs(line, arguments, start_index);
+
     //If too many arguments were passed
     if(num_args > 1){
         printf("cd: Too many arguments\n");
@@ -249,7 +278,6 @@ int main(int argc, char** argv){
         //This works for every other command using fork() and execvp()
         else {
             int num_args = extractArgs(buffer, args, strlen(buf)); //Extract arguments and get number of args
-            //int index_redirect = -1;
             int saved_out = dup(1); //Used to replace output to stdout for redirection
             int saved_in = dup(0); //Used to replace input to stdin for redirection
             bool error = false; //error flag
@@ -257,6 +285,7 @@ int main(int argc, char** argv){
 
             char* newargv[num_args + 2]; //Arguments that will be passed to execvp()
             newargv[0] = buf;
+
 
             //Setting each value after initial command to NULL
             //I have been getting garbage values sometimes that
@@ -326,16 +355,6 @@ int main(int argc, char** argv){
                     }
                 }
                 
-                //replace $$ with shell pid
-                else if(strcmp(args[args_index], "$$") == 0){
-                    int shell_pid_int = getpid();
-                    char shell_pid_str[20]; //Used to trun shell_pid into a string for output
-                    //copy int to a char[] using sprintf, then store it in newargv[]
-                    sprintf(shell_pid_str, "%d", shell_pid_int);
-                    newargv[j] = shell_pid_str;
-                    args_index++;
-                }
-
                 //If normal argument, simply copy
                 else{
                     newargv[j] = args[args_index];
